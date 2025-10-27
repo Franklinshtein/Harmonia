@@ -345,13 +345,39 @@ app.delete('/api/bookings/:id', (req, res) => {
 });
 
 // ============================================
+// SERVE STATIC FILES (HTML, CSS, JS, Images)
+// ============================================
+// This serves your website files (index.html, etc.)
+// Place this AFTER API routes so API takes priority
+app.use(express.static(__dirname));
+app.use('/img', express.static(path.join(__dirname, 'img')));
+app.use('/css', express.static(path.join(__dirname, 'css')));
+app.use('/js', express.static(path.join(__dirname, 'js')));
+
+// Fallback: serve index.html for any non-API routes
+app.get('*', (req, res, next) => {
+  // Skip if it's an API route
+  if (req.path.startsWith('/api/')) {
+    return next();
+  }
+  
+  // Try to serve the requested file, fallback to index.html
+  const filePath = path.join(__dirname, req.path);
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    res.sendFile(filePath);
+  } else {
+    res.sendFile(path.join(__dirname, 'index.html'));
+  }
+});
+
+// ============================================
 // ERROR HANDLING
 // ============================================
 
-// 404 handler
-app.use((req, res) => {
+// 404 handler for API routes only
+app.use('/api/*', (req, res) => {
   res.status(404).json({ 
-    error: 'Endpoint not found',
+    error: 'API endpoint not found',
     path: req.path
   });
 });
