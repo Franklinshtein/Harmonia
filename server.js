@@ -12,7 +12,13 @@ const path = require('path');
 
 // Create Express app
 const app = express();
-const PORT = 3000;
+
+// ============================================
+// CONFIGURATION - Works for both local and cloud deployment
+// ============================================
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for cloud deployment
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Middleware - allows the server to understand JSON and handle cross-origin requests
 app.use(cors()); // Allows frontend to communicate with backend
@@ -35,19 +41,32 @@ if (!fs.existsSync(BOOKINGS_FILE)) {
 }
 
 // ============================================
-// EMAIL CONFIGURATION
+// EMAIL CONFIGURATION - Using Environment Variables
 // ============================================
-// Configure email settings - IMPORTANT: Replace with real credentials
+// IMPORTANT: Set these as environment variables in Railway:
+// - EMAIL_SERVICE (e.g., 'gmail')
+// - EMAIL_USER (your email address)
+// - EMAIL_PASS (your app password)
 const emailConfig = {
-  service: 'gmail', // or 'outlook', 'yahoo', etc.
+  service: process.env.EMAIL_SERVICE || 'gmail',
   auth: {
-    user: 'xgod7x@gmail.com', // REPLACE with your clinic email
-    pass: 'tnuv vwkc vpky wres'      // REPLACE with your app password (NOT regular password)
+    user: process.env.EMAIL_USER || 'xgod7x@gmail.com',
+    pass: process.env.EMAIL_PASS || 'tnuv vwkc vpky wres'
   }
 };
 
 // Create email transporter
 const transporter = nodemailer.createTransport(emailConfig);
+
+// Verify email configuration on startup
+transporter.verify((error, success) => {
+  if (error) {
+    console.warn('⚠️  Email service not configured properly:', error.message);
+    console.warn('   Emails will not be sent. Set EMAIL_USER and EMAIL_PASS environment variables.');
+  } else {
+    console.log('✅ Email service is ready');
+  }
+});
 
 // ============================================
 // HELPER FUNCTIONS
@@ -99,7 +118,7 @@ function isTimeSlotAvailable(date, time) {
 async function sendClinicNotification(booking) {
   const mailOptions = {
     from: emailConfig.auth.user,
-    to: 'harmonia.sibo@gmail.com', // Clinic email
+    to: process.env.CLINIC_EMAIL || 'harmonia.sibo@gmail.com', // Clinic email
     subject: `Nowa rezerwacja: ${booking.service}`,
     html: `
       <h2>Nowa rezerwacja wizyty</h2>
@@ -118,10 +137,10 @@ async function sendClinicNotification(booking) {
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log('Clinic notification sent successfully');
+    console.log('✅ Clinic notification sent successfully');
     return true;
   } catch (error) {
-    console.error('Error sending clinic notification:', error);
+    console.error('❌ Error sending clinic notification:', error);
     return false;
   }
 }
@@ -158,10 +177,10 @@ async function sendClientConfirmation(booking) {
 
   try {
     await transporter.sendMail(mailOptions);
-    console.log('Client confirmation sent successfully');
+    console.log('✅ Client confirmation sent successfully');
     return true;
   } catch (error) {
-    console.error('Error sending client confirmation:', error);
+    console.error('❌ Error sending client confirmation:', error);
     return false;
   }
 }
@@ -169,6 +188,30 @@ async function sendClientConfirmation(booking) {
 // ============================================
 // API ENDPOINTS
 // ============================================
+
+/**
+ * GET / - Health check endpoint
+ * Useful for monitoring and deployment verification
+ */
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'HARMONIA Booking System API',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
+});
+
+/**
+ * GET /health - Health check endpoint
+ */
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
 
 /**
  * GET /api/available-times
@@ -302,18 +345,66 @@ app.delete('/api/bookings/:id', (req, res) => {
 });
 
 // ============================================
+// ERROR HANDLING
+// ============================================
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ 
+    error: 'Endpoint not found',
+    path: req.path
+  });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: NODE_ENV === 'development' ? err.message : 'Something went wrong'
+  });
+});
+
+// ============================================
 // START SERVER
 // ============================================
-app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log('===========================================');
   console.log(`🚀 Booking system started!`);
-  console.log(`📍 Server running on: http://localhost:${PORT}`);
+  console.log(`📍 Environment: ${NODE_ENV}`);
+  console.log(`🌐 Server running on: http://${HOST}:${PORT}`);
+  if (NODE_ENV === 'production') {
+    console.log(`🌍 Public URL: Check your hosting dashboard`);
+  } else {
+    console.log(`🏠 Local: http://localhost:${PORT}`);
+  }
   console.log(`📁 Bookings saved to: ${BOOKINGS_FILE}`);
   console.log('===========================================');
   console.log('Available endpoints:');
+  console.log(`  GET    /`);
+  console.log(`  GET    /health`);
   console.log(`  GET    /api/available-times?date=YYYY-MM-DD`);
   console.log(`  POST   /api/bookings`);
   console.log(`  GET    /api/bookings`);
   console.log(`  DELETE /api/bookings/:id`);
   console.log('===========================================');
 });
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+module.exports = app; // Export for testing purposes
