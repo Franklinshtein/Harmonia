@@ -190,10 +190,10 @@ async function sendClientConfirmation(booking) {
 // ============================================
 
 /**
- * GET / - Health check endpoint
+ * GET /api/status - API status check endpoint
  * Useful for monitoring and deployment verification
  */
-app.get('/', (req, res) => {
+app.get('/api/status', (req, res) => {
   res.json({
     status: 'ok',
     message: 'HARMONIA Booking System API',
@@ -350,23 +350,20 @@ app.delete('/api/bookings/:id', (req, res) => {
 // This serves your website files (index.html, etc.)
 // Place this AFTER API routes so API takes priority
 app.use(express.static(__dirname));
-app.use('/img', express.static(path.join(__dirname, 'img')));
-app.use('/css', express.static(path.join(__dirname, 'css')));
-app.use('/js', express.static(path.join(__dirname, 'js')));
 
-// Fallback: serve index.html for any non-API routes
+// Fallback for SPA-style routing - serve index.html for non-API routes
 app.get('*', (req, res, next) => {
-  // Skip if it's an API route
-  if (req.path.startsWith('/api/')) {
+  // Skip if it's an API route or health check
+  if (req.path.startsWith('/api/') || req.path === '/health') {
     return next();
   }
   
-  // Try to serve the requested file, fallback to index.html
-  const filePath = path.join(__dirname, req.path);
-  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-    res.sendFile(filePath);
+  // For all other routes, try to serve index.html
+  const indexPath = path.join(__dirname, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
   } else {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    next();
   }
 });
 
@@ -407,12 +404,13 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`📁 Bookings saved to: ${BOOKINGS_FILE}`);
   console.log('===========================================');
   console.log('Available endpoints:');
-  console.log(`  GET    /`);
-  console.log(`  GET    /health`);
-  console.log(`  GET    /api/available-times?date=YYYY-MM-DD`);
-  console.log(`  POST   /api/bookings`);
-  console.log(`  GET    /api/bookings`);
-  console.log(`  DELETE /api/bookings/:id`);
+  console.log(`  GET    /                                    → Website (index.html)`);
+  console.log(`  GET    /health                              → Health check`);
+  console.log(`  GET    /api/status                          → API status`);
+  console.log(`  GET    /api/available-times?date=YYYY-MM-DD → Available slots`);
+  console.log(`  POST   /api/bookings                        → Create booking`);
+  console.log(`  GET    /api/bookings                        → List bookings`);
+  console.log(`  DELETE /api/bookings/:id                    → Delete booking`);
   console.log('===========================================');
 });
 
